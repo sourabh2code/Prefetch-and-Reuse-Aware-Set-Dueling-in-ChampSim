@@ -1,0 +1,70 @@
+# ====================================
+# ChampSim ACA Project - Git Ignore
+# ====================================
+
+# Generated simulator builds
+/bin/
+/.csconfig/
+/obj/
+/_configuration.mk
+/absolute.options
+compile_commands.json
+
+# Compiler generated files
+**/*.o
+**/*.d
+**/_build
+**/_doxygen
+.cache/
+
+# Generated headers and sources
+/inc/champsim_constants.h
+/inc/cache_modules.h
+/inc/ooo_cpu_modules.h
+/src/core_inst.cc
+
+# Generated legacy files
+**/legacy.options
+**/function_patch.options
+**/legacy_bridge.inc
+**/legacy_bridge.h
+**/legacy_bridge.cc
+
+# Dependency installation
+/vcpkg_installed/
+
+# Only if installing vcpkg manually,
+# rather than maintaining it as a submodule
+/vcpkg/
+
+# Benchmark traces
+/traces/
+*.champsimtrace
+*.champsimtrace.xz
+
+# Experimental output
+/results/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store
+
+# VS Code local settings
+.vscode/
+
+# Temporary files
+*.tmp
+*.swp
+
+# Optional upstream materials excluded from our project repo
+/docs/
+/tracer/
+/CONTRIBUTING.md
+/PUBLICATIONS_USING_CHAMPSIM.bib
+/.github/
+

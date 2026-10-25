@@ -1,5 +1,6 @@
 #include "prefetch_drrip.h"
 
+#include <iostream>
 #include <algorithm>
 #include <cassert>
 #include <random>
@@ -9,9 +10,18 @@
 
 prefetch_drrip::prefetch_drrip(CACHE* cache)
     : replacement(cache), NUM_SET(cache->NUM_SET), NUM_WAY(cache->NUM_WAY), brrip_counter(0), rrpv(static_cast<std::size_t>(NUM_SET * NUM_WAY)),
-      PSEL(NUM_CPUS, champsim::msl::dscounter<long, PSEL_WIDTH>(champsim::msl::get_sample_rate(NUM_SET))), pending_prefetch(
+      PSEL(NUM_CPUS, champsim::msl::dscounter<long, PSEL_WIDTH>(champsim::msl::get_sample_rate(NUM_SET), category_projector<long>{}, 512)), pending_prefetch(
     static_cast<std::size_t>(NUM_SET * NUM_WAY), 0)
 {
+}
+
+std::size_t prefetch_drrip::leader_category(long set) const
+{
+    champsim::msl::categorizer<long> sampler(
+        champsim::msl::get_sample_rate(NUM_SET)
+    );
+
+    return sampler.get_sample_category(set);
 }
 
 unsigned& prefetch_drrip::get_rrpv(long set, long way) { return rrpv.at(static_cast<std::size_t>(set * NUM_WAY + way)); }
@@ -41,8 +51,14 @@ void prefetch_drrip::update_replacement_state(uint32_t triggering_cpu, long set,
         // First demand use of this prefetched line
         pending_prefetch[index] = 0;
 
-        // Reward the corresponding leader policy
-        PSEL[triggering_cpu].update_good(set);
+        auto category = leader_category(set);
+
+        if (category < 2) {
+            useful_prefetches[category]++;
+            positive_feedback[category]++;
+
+            PSEL[triggering_cpu].update_good(set);
+        }
     }
   }
   // cache hit
@@ -56,34 +72,57 @@ void prefetch_drrip::update_replacement_state(uint32_t triggering_cpu, long set,
   }
 }
 
-void prefetch_drrip::replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr, champsim::address ip,
-                                   champsim::address victim_addr, access_type type)
+void prefetch_drrip::replacement_cache_fill(uint32_t triggering_cpu, long set, long way, champsim::address full_addr,
+                                  champsim::address ip, champsim::address victim_addr, access_type type) 
 {
-  auto index = static_cast<std::size_t>(set * NUM_WAY + way);
+    auto index = static_cast<std::size_t>(
+        set * NUM_WAY + way
+    );
 
-    // If the previous line was prefetched
-    // but never used, count an unused eviction.
+    auto category = leader_category(set);
+
+    // Track an outstanding prefetched line
+    // being replaced before demand use.
     if (pending_prefetch.at(index)) {
-        PSEL[triggering_cpu].update_bad(set);
+
+        if (category < 2) {
+            unused_evictions[category]++;
+            negative_feedback[category]++;
+
+            PSEL[triggering_cpu].update_bad(set);
+        }
+
         pending_prefetch[index] = 0;
     }
 
-    // Track whether the incoming line is a prefetch.
-    pending_prefetch[index] =
-        (type == access_type::PREFETCH) ? 1 : 0;
+    // Track new prefetch fills.
+    pending_prefetch[index] = (type == access_type::PREFETCH) ? 1 : 0;
 
-    // Preserve original DRRIP writeback handling.
+    if (type == access_type::PREFETCH && category < 2) {
+        prefetch_fills[category]++;
+    }
+
+    // Preserve original writeback insertion.
     if (type == access_type::WRITE) {
         get_rrpv(set, way) = maxRRPV - 1;
         return;
     }
 
-    // Preserve original policy selection.
-    if (PSEL[triggering_cpu].decide(set)) {
-        update_brrip(set, way);
-    } else {
-        update_srrip(set, way);
+    bool use_brrip = PSEL[triggering_cpu].decide(set);
+
+    // Record which policy follower sets select.
+    if (category >= 2) {
+        if (use_brrip)
+            follower_brrip_selections++;
+        else
+            follower_srrip_selections++;
     }
+
+    // Original DRRIP insertion behavior.
+    if (use_brrip)
+        update_brrip(set, way);
+    else
+        update_srrip(set, way);
 }
 
 // find replacement victim
@@ -102,4 +141,50 @@ long prefetch_drrip::find_victim(uint32_t triggering_cpu, uint64_t instr_id, lon
   assert(begin <= victim);
   assert(victim < end);
   return std::distance(begin, victim); // cast protected by assertions
+}
+
+void prefetch_drrip::replacement_final_stats()
+{
+    std::cout << "\n========== PREFETCH-DRRIP STATISTICS ==========\n";
+
+    std::cout << "Initial PSEL: 512\n";
+    std::cout << "Final PSEL: " << PSEL[0].value() << '\n';
+
+    std::cout << "BRRIP leader prefetch fills: "
+              << prefetch_fills[0] << '\n';
+
+    std::cout << "SRRIP leader prefetch fills: "
+              << prefetch_fills[1] << '\n';
+
+    std::cout << "BRRIP useful prefetches: "
+              << useful_prefetches[0] << '\n';
+
+    std::cout << "SRRIP useful prefetches: "
+              << useful_prefetches[1] << '\n';
+
+    std::cout << "BRRIP unused evictions: "
+              << unused_evictions[0] << '\n';
+
+    std::cout << "SRRIP unused evictions: "
+              << unused_evictions[1] << '\n';
+
+    std::cout << "BRRIP positive feedback: "
+              << positive_feedback[0] << '\n';
+
+    std::cout << "SRRIP positive feedback: "
+              << positive_feedback[1] << '\n';
+
+    std::cout << "BRRIP negative feedback: "
+              << negative_feedback[0] << '\n';
+
+    std::cout << "SRRIP negative feedback: "
+              << negative_feedback[1] << '\n';
+
+    std::cout << "Follower BRRIP selections: "
+              << follower_brrip_selections << '\n';
+
+    std::cout << "Follower SRRIP selections: "
+              << follower_srrip_selections << '\n';
+
+    std::cout << "===============================================\n";
 }

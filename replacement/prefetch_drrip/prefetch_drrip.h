@@ -1,6 +1,7 @@
 #ifndef REPLACEMENT_PREFETCH_DRRIP_H
 #define REPLACEMENT_PREFETCH_DRRIP_H
 
+#include<cstddef>
 #include <cstdint>
 #include <array>
 #include <vector>
@@ -12,6 +13,7 @@
 struct prefetch_drrip : public champsim::modules::replacement {
 private:
   unsigned& get_rrpv(long set, long way);
+  std::size_t leader_category(long set) const;
 
 public:
   static constexpr unsigned maxRRPV = 3;
@@ -35,6 +37,14 @@ public:
   std::array<uint64_t, 2> prefetch_fills{};
   std::array<uint64_t, 2> useful_prefetches{};
   std::array<uint64_t, 2> unused_evictions{};
+
+  std::array<uint64_t, 2> positive_feedback{};
+  std::array<uint64_t, 2> negative_feedback{};
+
+  uint64_t follower_brrip_selections = 0;
+  uint64_t follower_srrip_selections = 0;
+
+  void replacement_final_stats();
 
   prefetch_drrip(CACHE* cache);
 

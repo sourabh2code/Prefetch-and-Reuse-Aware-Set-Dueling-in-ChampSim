@@ -7,9 +7,9 @@
 
 #include "champsim.h"
 
-drrip::drrip(CACHE* cache)
-    : replacement(cache), NUM_SET(cache->NUM_SET), NUM_WAY(cache->NUM_WAY), rrpv(static_cast<std::size_t>(NUM_SET * NUM_WAY)),
-      PSEL(NUM_CPUS, champsim::msl::dscounter<long, PSEL_WIDTH>(champsim::msl::get_sample_rate(NUM_SET)))
+drrip::drrip(CACHE* cache) : replacement(cache), NUM_SET(cache->NUM_SET),NUM_WAY(cache->NUM_WAY), brrip_counter(0),
+      rrpv(static_cast<std::size_t>(NUM_SET * NUM_WAY)), 
+      PSEL(NUM_CPUS, champsim::msl::dscounter<long, PSEL_WIDTH>(champsim::msl::get_sample_rate(NUM_SET), category_projector<long>{}, 512))
 {
 }
 
